@@ -22,7 +22,7 @@ def checkIntersection(fnMesh, rayOrigin, rayDirection):
     # No specified triangle IDs
     triangleIds = None
     # IDs are not sorted
-    IdsAreSorted = False
+    sortedIds = False
 
     # No specified radius to search around the ray origin
     biDirectionalTest = False
@@ -49,7 +49,7 @@ def checkIntersection(fnMesh, rayOrigin, rayDirection):
     intersectionTolerance = 0.0001
 
     # Finds all intersections
-    intersectionFound = fnMesh.allIntersections(rayOrigin, rayDirection, faceIds, triangleIds, IdsAreSorted,
+    intersectionFound = fnMesh.allIntersections(rayOrigin, rayDirection, faceIds, triangleIds, sortedIds,
                                   worldSpace, maxParam, biDirectionalTest,
                                   accelParams, sortIntersections, intersectionPoints,
                                   intersectionRayParams, intersectionFaces, intersectionTriangles, 
@@ -114,6 +114,11 @@ def createModels():
         
     # Clear selection
     cmds.select(cl=True)
+	
+	
+#----------------#
+# User Interface #
+#----------------#
 
 # Check if window exists
 if cmds.window( 'scatterToolUI' , exists = True ) :
@@ -122,7 +127,6 @@ if cmds.window( 'scatterToolUI' , exists = True ) :
 # Create window 
 toolWindow = cmds.window( 'scatterToolUI', title="Scatter Tool", width = 200,
     mnb = False, mxb = False, sizeable = True, rtf = True )
-
 
 general = cmds.rowColumnLayout ( nc = 1 , cw = ( 1 , 200 ) ) 
 
