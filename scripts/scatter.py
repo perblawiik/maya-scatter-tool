@@ -3,6 +3,40 @@ import maya.OpenMaya as om
 
 from random import uniform as rand
 
+def computeBoundingBox(fnMesh):
+    points = om.MPointArray()
+    fnMesh.getPoints(points, om.MSpace.kWorld)
+    vertices = [om.MVector(points[i]) for i in range(points.length())]
+    
+    xMin = vertices[0].x
+    yMin = vertices[0].y
+    zMin = vertices[0].z
+    
+    xMax = vertices[1].x
+    yMax = vertices[1].y
+    zMax = vertices[1].z
+
+    for vertex in vertices:
+        if vertex.x < xMin:
+            xMin = vertex.x
+        if vertex.x > xMax:
+            xMax = vertex.x
+            
+        if vertex.y < yMin:
+            yMin = vertex.y
+        if vertex.y > yMax:
+            yMax = vertex.y
+            
+        if vertex.z < zMin:
+            zMin = vertex.z
+        if vertex.z > zMax:
+            zMax = vertex.z
+    
+    min = (xMin, yMin, zMin)
+    max = (xMax, yMax, zMax)
+    
+    return min, max
+
 def getFnMesh(meshName):
     # Clear selection
     cmds.select(cl=True)
@@ -56,12 +90,28 @@ def checkIntersection(fnMesh, rayOrigin, rayDirection):
                                   intersectBarycentrics1, intersectBarycentrics2, intersectionTolerance)
                                   
     intersectionPoint = (0,0,0)
+    faceNormal = (0,0,0)
+    
     if intersectionFound:
         intersectionPoint = (intersectionPoints[0].x, intersectionPoints[0].y, intersectionPoints[0].z)
         
-    return intersectionFound, intersectionPoint
+        normalIds = om.MIntArray()
+        fnMesh.getFaceNormalIds(intersectionFaces[0], normalIds)
+        
+        normals = om.MFloatVectorArray()
+        fnMesh.getNormals(normals)
+        
+        n = normalIds.length()
+        sum = om.MFloatVector()
+        for i in range(n):
+            sum += normals[i]
+        sum /= n
+        
+        faceNormal = (sum.x, sum.y, sum.z)
+ 
+    return intersectionFound, intersectionPoint, faceNormal
 
-def generateScatterPoints(num_points=50):
+def generateScatterPoints(num_points=200):
     # Check if a mesh is selected
     selected = cmds.ls( sl=True )
     if len(selected) == 0:
@@ -70,16 +120,19 @@ def generateScatterPoints(num_points=50):
     
     # Get FnMesh of selected object to check ray imtersection
     fnMesh = getFnMesh(selected[0])
-        
+    
+    # Compute bounding volume
+    min, max = computeBoundingBox(fnMesh)
+    
     for i in range( num_points ):
         # Randomize ray origin
-        rayOrigin = om.MFloatPoint(rand(10, -10), 0, rand(10, -10), 1.0)
+        rayOrigin = om.MFloatPoint(rand(max[0], min[0]), max[1] + 10.0, rand(max[2], min[2]), 1.0)
         
         # Cast ray in negative y-direction
         rayDirection = om.MFloatVector(0, -1, 0)
 
         # Cast ray and check for intersection with given mesh
-        intersectionFound, intersectionPoint = checkIntersection(fnMesh, rayOrigin, rayDirection)
+        intersectionFound, intersectionPoint, surfaceNormal = checkIntersection(fnMesh, rayOrigin, rayDirection)
         
         # Move locator to a random position
         if intersectionFound:
