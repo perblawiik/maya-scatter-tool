@@ -1,5 +1,6 @@
 import maya.cmds as cmds
 import maya.OpenMaya as om
+import math
 
 from random import uniform as rand
 
@@ -99,19 +100,63 @@ def checkIntersection(fnMesh, rayOrigin, rayDirection):
         fnMesh.getFaceNormalIds(intersectionFaces[0], normalIds)
         
         normals = om.MFloatVectorArray()
-        fnMesh.getNormals(normals)
+        fnMesh.getNormals(normals,worldSpace)
         
         n = normalIds.length()
         sum = om.MFloatVector()
         for i in range(n):
-            sum += normals[i]
+            sum += normals[normalIds[i]]
+            print((normals[normalIds[i]].x,normals[normalIds[i]].y,normals[normalIds[i]].z))
+            
         sum /= n
         
+        sum.normalize()
         faceNormal = (sum.x, sum.y, sum.z)
+        print(faceNormal)
+        
  
     return intersectionFound, intersectionPoint, faceNormal
+    
+    
+def aimY(faceNormal):
+    b = om.MFloatVector(faceNormal[0], faceNormal[1], faceNormal[2])
+    
+    xyLength = math.sqrt(b.x*b.x+b.y*b.y)
+    vecLength = math.sqrt(b.x*b.x + b.y*b.y + b.z*b.z)
+    if xyLength == 0:
+        if b.x > 0:
+            zAngle = math.pi*0.5
+        else:
+            zAngle = -math.pi *0.5 
+    else:
+        zAngle = math.acos(b.y/xyLength)
+    
+    xAngle = math.acos(xyLength/vecLength)
+    
+    if b.z > 0:
+        xAngle = xAngle
+    else:
+        xAngle = -xAngle
+    
+    
+    
+    xAngleDeg = xAngle *180/math.pi
+    
+    
+    if b.x > 0:
+        zAngle = zAngle
+    else:
+        zAngle = -zAngle
+    
+    zAngleDeg = zAngle * 180/math.pi
+    
+    return xAngleDeg,zAngleDeg
+        
+            
+    
 
-def generateScatterPoints(num_points=200):
+
+def generateScatterPoints(num_points=10):
     # Check if a mesh is selected
     selected = cmds.ls( sl=True )
     if len(selected) == 0:
@@ -132,7 +177,7 @@ def generateScatterPoints(num_points=200):
         rayDirection = om.MFloatVector(0, -1, 0)
 
         # Cast ray and check for intersection with given mesh
-        intersectionFound, intersectionPoint, surfaceNormal = checkIntersection(fnMesh, rayOrigin, rayDirection)
+        intersectionFound, intersectionPoint, faceNormal = checkIntersection(fnMesh, rayOrigin, rayDirection)
         
         # Move locator to a random position
         if intersectionFound:
@@ -146,6 +191,20 @@ def generateScatterPoints(num_points=200):
             
             # Set position
             cmds.move( intersectionPoint[0], intersectionPoint[1], intersectionPoint[2], spaceLoc )
+            
+            xAngleDeg,zAngleDeg = aimY(faceNormal)
+            
+            cmds.setAttr( "{}.rx".format(spaceLoc[0]), xAngleDeg )
+            cmds.setAttr( "{}.rz".format(spaceLoc[0]), -zAngleDeg )
+
+            
+            #cmds.rotate(xAngleDeg,0,0, spaceLoc )
+            #cmds.rotate(0,0,zAngleDeg, spaceLoc )
+
+            #cmds.rotete(zAngleDeg,spaceLoc)
+            
+            print(xAngleDeg)
+            print(zAngleDeg)
         
     # Clear selection
     cmds.select(cl=True)
@@ -157,10 +216,14 @@ def createModels():
     for i in range( len(locators) / 2 ):
         # Get position of current locator
         position = cmds.xform(locators[i], q=True, ws=True, t=True)
+        rotation = cmds.xform(locators[i], q=True, ws=True, ro=True)
+
         
         # Create and move object to locator position
-        cmds.move( position[0], position[1], position[2], cmds.polySphere()[0], a=True )
-        
+        cube =  cmds.polyCube()[0]
+        cmds.move( position[0], position[1], position[2], cube, a=True )
+        cmds.rotate(rotation[0],rotation[1],rotation[2], cube )
+
         # Remove locator
         cmds.delete( locators[i] )
         
