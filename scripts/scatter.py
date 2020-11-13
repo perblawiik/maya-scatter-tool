@@ -25,8 +25,8 @@ def checkIntersection(fnMesh, rayOrigin, rayDirection):
     sortedIds = False
 
     # No specified radius to search around the ray origin
-    biDirectionalTest = False
     maxParam = 999999
+    biDirectionalTest = False
 
     # Coordinate space constraints
     worldSpace = om.MSpace.kWorld
@@ -72,14 +72,6 @@ def generateScatterPoints(num_points=50):
     fnMesh = getFnMesh(selected[0])
         
     for i in range( num_points ):
-        # Instantiate a space locator
-        spaceLoc = cmds.spaceLocator()
-        
-        # Set color of the locator
-        shapeName = spaceLoc[0][0:7] + "Shape" + spaceLoc[0][7:]
-        cmds.setAttr( "{}.overrideEnabled".format(shapeName), True )
-        cmds.setAttr( "{}.overrideColor".format(shapeName), 17 )
-        
         # Randomize ray origin
         rayOrigin = om.MFloatPoint(rand(10, -10), 0, rand(10, -10), 1.0)
         
@@ -91,9 +83,16 @@ def generateScatterPoints(num_points=50):
         
         # Move locator to a random position
         if intersectionFound:
+            # Instantiate a space locator
+            spaceLoc = cmds.spaceLocator()
+            
+            # Set color of the locator
+            shapeName = spaceLoc[0][0:7] + "Shape" + spaceLoc[0][7:]
+            cmds.setAttr( "{}.overrideEnabled".format(shapeName), True )
+            cmds.setAttr( "{}.overrideColor".format(shapeName), 17 )
+            
+            # Set position
             cmds.move( intersectionPoint[0], intersectionPoint[1], intersectionPoint[2], spaceLoc )
-        else :
-            cmds.move( rayOrigin.x, rayOrigin.y, rayOrigin.z, spaceLoc )
         
     # Clear selection
     cmds.select(cl=True)
