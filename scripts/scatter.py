@@ -4,9 +4,14 @@ import functools
 import math
 
 from random import uniform as rand
+
+def maxClamp(value, max):
+    if value > max:
+        return max
+    return value    
+    
     
 def basicSampling( xMin, zMin, xMax, zMax, resolution, P ):
-   
     sizeX = (xMax - xMin)
     sizeZ = (zMax - zMin)
     
@@ -144,12 +149,15 @@ def aimY(vec):
         if targetDir.x < 0:
             zAngle *= -1.0
     else:
-        zAngle = math.acos( targetDir.y / xyLength )
+        # Clamp to 1.0 in case of numerical error
+        zAngle = math.acos( maxClamp( targetDir.y / xyLength, 1.0 ) )
     
     if targetDir.x > 0:
         zAngle *= -1.0
     
-    xAngle = math.acos( xyLength / targetDir.length() )
+    #xAngle = math.acos( xyLength / targetDir.length)
+    # Clamp to 1.0 in case of numerical error
+    xAngle = math.acos( maxClamp( xyLength, 1.0 ) )
     if targetDir.z < 0:
         xAngle *= -1.0
     
