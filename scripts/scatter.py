@@ -3,9 +3,9 @@ import maya.OpenMaya as om
 import functools
 import math
 
-from random import uniform as rand
+import random
 
-def maxClamp(value, max):
+def clampMax(value, max):
     if value > max:
         return max
     return value    
@@ -45,14 +45,18 @@ def basicSampling( xMin, zMin, xMax, zMax, resolution, P ):
     
     # Sample xz-coordinates based on given probability P
     samples = []
+    
+    # Use a specific starting seed
+    random.seed(0)
     for j in range(1, dimZ):
         for i in range(1, dimX):
-            if rand(1.0, 0.0) < P:
+            if random.uniform(1.0, 0.0) < P:
                 # Add a random offset to reduce regular sampling artifacts
-                x = xValues[i] + rand( deltaHalf, -deltaHalf )
-                z = zValues[j] + rand( deltaHalf, -deltaHalf )
+                x = xValues[i] + random.uniform( deltaHalf, -deltaHalf )
+                z = zValues[j] + random.uniform( deltaHalf, -deltaHalf )
                 samples.append((x, z))
     
+    random.seed()
     return samples
                 
 def lerp( a, b, t ):
@@ -150,14 +154,14 @@ def aimY(vec):
             zAngle *= -1.0
     else:
         # Clamp to 1.0 in case of numerical error
-        zAngle = math.acos( maxClamp( targetDir.y / xyLength, 1.0 ) )
+        zAngle = math.acos( clampMax( targetDir.y / xyLength, 1.0 ) )
     
     if targetDir.x > 0:
         zAngle *= -1.0
     
     #xAngle = math.acos( xyLength / targetDir.length)
     # Clamp to 1.0 in case of numerical error
-    xAngle = math.acos( maxClamp( xyLength, 1.0 ) )
+    xAngle = math.acos( clampMax( xyLength, 1.0 ) )
     if targetDir.z < 0:
         xAngle *= -1.0
     
@@ -167,7 +171,9 @@ def aimY(vec):
 
     return xAngleDeg, zAngleDeg
 
-def generateScatterPoints( resolutionField, probabilityField, surfaceOrientationCheckBox, locatorColorFieldGrp, *pArgs ):
+def generateScatterPoints( resolutionField, probabilityField, surfaceOrientationCheckBox, 
+                           locatorColorFieldGrp, randomRotMaxSliderGrp, randomRotMinSliderGrp, 
+                           minScaleFieldGrp, maxScaleFieldGrp, locatorGroupNameFieldGrp, *pArgs ):
     # Check if a mesh is selected
     selected = cmds.ls( sl=True )
     if len(selected) == 0:
@@ -179,6 +185,11 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     probability = cmds.floatSliderGrp( probabilityField, query=True, value=True )
     useSurfaceOrientation = cmds.checkBoxGrp( surfaceOrientationCheckBox, query=True, value1=True )
     locatorColor = cmds.intFieldGrp( locatorColorFieldGrp, query=True, value=True )
+    rotationMin = cmds.intSliderGrp( randomRotMinSliderGrp, query=True, value=True )
+    rotationMax = cmds.intSliderGrp( randomRotMaxSliderGrp, query=True, value=True )
+    minScale = cmds.floatFieldGrp( minScaleFieldGrp, query=True, value1=True )
+    maxScale = cmds.floatFieldGrp( maxScaleFieldGrp, query=True, value1=True )
+    scatterGroupName = cmds.textFieldGrp( locatorGroupNameFieldGrp, query=True, text=True )
     
     # Get FnMesh of selected object to check ray imtersection
     fnMesh = getFnMesh(selected[0])
@@ -189,6 +200,9 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     # Generate sample coordinates
     samples = basicSampling( bbox[0], bbox[2], bbox[3], bbox[5], resolution, probability )
     
+    # Create a group for the samples
+    sampleGroup = cmds.group( em=True, name=scatterGroupName )
+        
     for coordinates in samples:
         rayOrigin = om.MFloatPoint(coordinates[0], bbox[4] + 10.0, coordinates[1], 1.0)
         
@@ -219,35 +233,75 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
                 xAngleDeg, zAngleDeg = aimY( faceNormal )
                 cmds.setAttr( "{}.rx".format(spaceLoc[0]), xAngleDeg )
                 cmds.setAttr( "{}.rz".format(spaceLoc[0]), zAngleDeg )
+                
+            if (rotationMax - rotationMin) > 0:
+                cmds.setAttr( "{}.ry".format(spaceLoc[0]), random.uniform( rotationMax, rotationMin ) )
+            
+            
+            scaling = 1.0
+            if (minScale >= maxScale):
+                scaling = minScale
+            else:
+                scaling = random.uniform( maxScale, minScale )
+            
+            cmds.setAttr( "{}.sx".format(spaceLoc[0]), scaling )
+            cmds.setAttr( "{}.sy".format(spaceLoc[0]), scaling )
+            cmds.setAttr( "{}.sz".format(spaceLoc[0]), scaling )
+            
+            cmds.parent( spaceLoc, sampleGroup )
     
     # Clear selection
     cmds.select( cl=True )
     
     return
         
-def createModels():
+def createModels( scatterGroupNameFieldGrp, *pArgs ):
+        
     # Check if a mesh is selected
     selected = cmds.ls( sl=True )
-    if len(selected) == 0:
+    numModels = len(selected)
+    if numModels == 0:
         print("No mesh selected")
         return
-
-    # Get all space locators in the scene
-    locators = cmds.ls( "locator*" )
+        
+    groupName = cmds.textFieldGrp( scatterGroupNameFieldGrp, query=True, text=True )
     
-    for i in range( len(locators) / 2 ):
+    if len(groupName) == 0:
+        print("Group name not found")
+        return
+
+    # Get all space locators from the given group name 
+    locators = cmds.ls( groupName, dag=1, type="transform" )
+    
+    if len(locators) < 2:
+        print("Group not found")
+        return
+    
+    for i in range( 1, len(locators) - 1 ):
+        # Create new object
+        if numModels == 1:
+            newObject = cmds.instance( selected )
+        else:
+            # Randomly select model    
+            index = random.randint(0, numModels-1)
+            newObject = cmds.instance( selected[index] )
+
         # Get position and rotation of current locator
         position = cmds.xform( locators[i], q=True, ws=True, t=True )
         rotation = cmds.xform( locators[i], q=True, ws=True, ro=True )
-
-        # Create and move object to locator position
-        cmds.instance( selected )
-        cmds.move( position[0], position[1], position[2], selected, a=True )
-        cmds.rotate( rotation[0], rotation[1], rotation[2], selected )
+        scaling = cmds.xform( locators[i], q=True, ws=True, s=True )
+        orignalScaling = cmds.xform( newObject, q=True, ws=True, s=True )
+        
+        cmds.move( position[0], position[1], position[2], newObject, a=True )
+        cmds.rotate( rotation[0], rotation[1], rotation[2], newObject )
+        cmds.scale( orignalScaling[0] * scaling[0], orignalScaling[1] * scaling[0], orignalScaling[2] * scaling[0], newObject)
 
         # Remove locator
         cmds.delete( locators[i] )
-        
+    
+    # Remove group   
+    cmds.delete( locators[0] ) 
+    
     # Clear selection
     cmds.select( cl=True )
 	
@@ -265,9 +319,9 @@ toolWindow = cmds.window( 'scatterToolUI', title="Scatter Tool", width=300, heig
 
 cmds.columnLayout( adj=True )
 
-cmds.separator( h=20, style="none" )
-cmds.text( label="Scatter Point Generator" )
-cmds.separator( h=10, style="none" )
+cmds.separator( h=12, style="none" )
+cmds.text( label="Random Scatter Point Generator" )
+cmds.separator( h=12, style="none" )
 
 resolutionField = cmds.intFieldGrp( numberOfFields=1, label="Sample Resolution", value1=20 )
 
@@ -280,20 +334,71 @@ cmds.separator( h=6, style="none" )
 
 surfaceOrientationCheckBox = cmds.checkBoxGrp( numberOfCheckBoxes=1, label="Adjust to Surface", value1=True )
 
+cmds.separator( h=12, style="none" )
+
+cmds.text( label="Randomize Local Y-Axis Rotation" )
+
+cmds.separator( h=6, style="none" )
+
+randomRotMaxSliderGrp = cmds.intSliderGrp( label="Maximum Angle", min=0.0, max=180.0, 
+                                          value=0, step=1.0, field=True )
+                                          
+cmds.separator( h=6, style="none" )
+
+randomRotMinSliderGrp = cmds.intSliderGrp( label="Minimum Angle", min=-180.0, max=0.0, 
+                                          value=0, step=1.0, field=True )
+
+cmds.separator( h=12, style="none" )
+
+cmds.text( label="Uniform Scale Randomization Interval" )
+
+cmds.separator( h=6, style="none" )
+
+minScaleFieldGrp = cmds.floatFieldGrp( numberOfFields=1, label="Minimum Scale", value1=1 )
+
+cmds.separator( h=6, style="none" )
+                                         
+maxScaleFieldGrp = cmds.floatFieldGrp( numberOfFields=1, label="Maximum Scale", value1=1 )
+                                         
+cmds.separator( h=12, style="none" )
+
+cmds.text( label="Scatter Group" )
+
+cmds.separator( h=6, style="none" )
+
+locatorGroupNameFieldGrp = cmds.textFieldGrp( label="Group Name", text="ScatterGroup" )
+
 cmds.separator( h=6, style="none" )
 
 locatorColorFieldGrp = cmds.intFieldGrp( numberOfFields=3, label="Scatter Point Color", 
                                          value1=255, value2=0, value3=0 )
 
-cmds.separator( h=10, style="none" )
+cmds.separator( h=12, style="none" )
 
-cmds.button( "Generate Scatter" , command=functools.partial( generateScatterPoints,
+cmds.button( "Generate Scatter", command=functools.partial( generateScatterPoints,
                                                     resolutionField,
                                                     probabilityField,
                                                     surfaceOrientationCheckBox,
-                                                    locatorColorFieldGrp ) ) 
+                                                    locatorColorFieldGrp,
+                                                    randomRotMaxSliderGrp,
+                                                    randomRotMinSliderGrp,
+                                                    minScaleFieldGrp,
+                                                    maxScaleFieldGrp,
+                                                    locatorGroupNameFieldGrp ) ) 
 cmds.separator( h=20 )
 
-cmds.button( "Add Models" , c = "createModels()" ) 
+cmds.text( label="Replace Scatter Points With Selected Models" )
 
+cmds.separator( h=12, style="none" )
+
+scatterGroupNameFieldGrp = cmds.textFieldGrp( label="Scatter Group Name", text="" )
+
+cmds.separator( h=6, style="none" )
+
+cmds.button( "Add Models", command=functools.partial( createModels, scatterGroupNameFieldGrp ) )
+
+cmds.separator( h=12, style="none" )
+
+#cmds.dockControl( area='right', content=toolWindow, allowedArea= "all" )
+ 
 cmds.showWindow( toolWindow ) 
