@@ -192,7 +192,7 @@ def aimY(vec):
 def generateScatterPoints( resolutionField, probabilityField, surfaceOrientationCheckBox, 
                            locatorColorFieldGrp, randomRotMaxSliderGrp, randomRotMinSliderGrp, 
                            minScaleFieldGrp, maxScaleFieldGrp, locatorGroupNameFieldGrp, *pArgs ):
-                               
+           
     # Check if a mesh is selected
     selected = cmds.ls( sl=True )
     if len(selected) == 0:
@@ -219,8 +219,9 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     # POISSON DISC SAMPLING
     # ---------------------
     discRadius = 2;
+    print "Generating samples.."
     samples = hdtPoissonDiscSampling( bbox[0], bbox[3], bbox[2], bbox[5], discRadius )
-    
+    print "Sampling complete"
     # ---------------------
     
     # Generate sample coordinates

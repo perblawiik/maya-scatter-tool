@@ -1,3 +1,4 @@
+import maya.cmds as cmds
 import math
 import random
 
@@ -140,9 +141,17 @@ def hdtPoissonDiscSampling(xMin, xMax, zMin, zMax, radius):
     gridDims = int(length * radiusInvert) + 1
     lookupGrid = [ [] for _ in range(gridDims*gridDims) ]
     
+    # Open a progress window
+    maxAreaInv = 1 / areaTotal
+    cmds.progressWindow(title='Generating samples..', progress=0, status='Progress: 0%', isInterruptable=True)
+
     # A list to store the final samples
     samples = []
     while areaTotal > 0.0000001:
+        amount = (1 - (areaTotal * maxAreaInv)) * 100.0
+        if int(amount) % 5 == 0:
+            cmds.progressWindow(edit=True, progress=amount, status='Progress: %d%%' % amount)
+        
         currentSquare = None
           
         # Select an active list based on the probability proportional to the area
@@ -220,6 +229,8 @@ def hdtPoissonDiscSampling(xMin, xMax, zMin, zMax, radius):
                         activeListAreas[activeListIndex + 1] += childArea
                         # Update total area
                         areaTotal += childArea
+
+    cmds.progressWindow(endProgress=1)
     
     return samples
         
