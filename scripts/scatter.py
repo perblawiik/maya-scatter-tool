@@ -1,17 +1,17 @@
 import maya.cmds as cmds
 import maya.OpenMaya as om
-import functools
-import math
 
+import math
 import random
+
+from hdt import hdtPoissonDiscSampling
 
 def clampMax(value, max):
     if value > max:
         return max
     return value    
     
-    
-def basicSampling( xMin, zMin, xMax, zMax, resolution, P ):
+def basicRandomSampling( xMin, zMin, xMax, zMax, resolution, P ):
     sizeX = (xMax - xMin)
     sizeZ = (zMax - zMin)
     
@@ -40,7 +40,7 @@ def basicSampling( xMin, zMin, xMax, zMax, resolution, P ):
     for i in range(dimZ):
         zValues.append( lerp( zMin, zMax, i / float(dimZ) ) )
 
-    # Calculate a third of the cell size used for applying offsets
+    # Calculate half of the cell size used for applying offsets
     deltaHalf = delta * 0.5
     
     # Sample xz-coordinates based on given probability P
@@ -124,7 +124,7 @@ def checkIntersection( fnMesh, rayOrigin, rayDirection ):
         # Get the indices of the vertex normals of the intersection face
         normalIds = om.MIntArray()
         fnMesh.getFaceNormalIds( intersectionFaces[0], normalIds )
-        
+
         # Get all normals of the mesh
         normals = om.MFloatVectorArray()
         fnMesh.getNormals( normals, worldSpace )
@@ -138,6 +138,24 @@ def checkIntersection( fnMesh, rayOrigin, rayDirection ):
         sum /= n
         sum.normalize()
         faceNormal = (sum.x, sum.y, sum.z)
+        
+        """
+        # Get all points
+        points = om.MPointArray()
+        fnMesh.getPoints( points, worldSpace )
+        
+        E1 = points[normalIds[1]] - points[normalIds[0]]
+        E2 = points[normalIds[2]] - points[normalIds[0]]
+        
+        # Normal = E1 x E2 (cross product)
+        N = om.MFloatVector()
+        N.x = (E1.y * E2.z) - (E1.z * E2.y)
+        N.y = (E1.z * E2.x) - (E1.x * E2.z)
+        N.z = (E1.x * E2.y) - (E1.y * E2.x)
+        
+        N.normalize()
+        faceNormal = (N.x, N.y, N.z)
+        """
 
     return intersectionFound, intersectionPoint, faceNormal
     
@@ -174,6 +192,7 @@ def aimY(vec):
 def generateScatterPoints( resolutionField, probabilityField, surfaceOrientationCheckBox, 
                            locatorColorFieldGrp, randomRotMaxSliderGrp, randomRotMinSliderGrp, 
                            minScaleFieldGrp, maxScaleFieldGrp, locatorGroupNameFieldGrp, *pArgs ):
+                               
     # Check if a mesh is selected
     selected = cmds.ls( sl=True )
     if len(selected) == 0:
@@ -197,8 +216,15 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     # Get bounding box coordinates
     bbox = cmds.exactWorldBoundingBox( selected[0] )
     
+    # POISSON DISC SAMPLING
+    # ---------------------
+    discRadius = 2;
+    samples = hdtPoissonDiscSampling( bbox[0], bbox[3], bbox[2], bbox[5], discRadius )
+    
+    # ---------------------
+    
     # Generate sample coordinates
-    samples = basicSampling( bbox[0], bbox[2], bbox[3], bbox[5], resolution, probability )
+    #samples = basicRandomSampling( bbox[0], bbox[2], bbox[3], bbox[5], resolution, probability )
     
     # Create a group for the samples
     sampleGroup = cmds.group( em=True, name=scatterGroupName )
@@ -252,11 +278,8 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     
     # Clear selection
     cmds.select( cl=True )
-    
-    return
         
 def createModels( scatterGroupNameFieldGrp, *pArgs ):
-        
     # Check if a mesh is selected
     selected = cmds.ls( sl=True )
     numModels = len(selected)
@@ -306,99 +329,3 @@ def createModels( scatterGroupNameFieldGrp, *pArgs ):
     cmds.select( cl=True )
 	
 	
-#----------------#
-# User Interface #
-#----------------#
-
-# Check if window exists
-if cmds.window( 'scatterToolUI' , exists = True ) :
-    cmds.deleteUI( 'scatterToolUI' ) 
-
-# Create window 
-toolWindow = cmds.window( 'scatterToolUI', title="Scatter Tool", width=300, height=300 )
-
-cmds.columnLayout( adj=True )
-
-cmds.separator( h=12, style="none" )
-cmds.text( label="Random Scatter Point Generator" )
-cmds.separator( h=12, style="none" )
-
-resolutionField = cmds.intFieldGrp( numberOfFields=1, label="Sample Resolution", value1=20 )
-
-cmds.separator( h=6, style="none" )
-
-probabilityField = cmds.floatSliderGrp( label="Probability Distribution", min=0.0, max=1.0, 
-                                        value=0.5, step=0.01, field=True )
-                                        
-cmds.separator( h=6, style="none" )
-
-surfaceOrientationCheckBox = cmds.checkBoxGrp( numberOfCheckBoxes=1, label="Adjust to Surface", value1=True )
-
-cmds.separator( h=12, style="none" )
-
-cmds.text( label="Randomize Local Y-Axis Rotation" )
-
-cmds.separator( h=6, style="none" )
-
-randomRotMaxSliderGrp = cmds.intSliderGrp( label="Maximum Angle", min=0.0, max=180.0, 
-                                          value=0, step=1.0, field=True )
-                                          
-cmds.separator( h=6, style="none" )
-
-randomRotMinSliderGrp = cmds.intSliderGrp( label="Minimum Angle", min=-180.0, max=0.0, 
-                                          value=0, step=1.0, field=True )
-
-cmds.separator( h=12, style="none" )
-
-cmds.text( label="Uniform Scale Randomization Interval" )
-
-cmds.separator( h=6, style="none" )
-
-minScaleFieldGrp = cmds.floatFieldGrp( numberOfFields=1, label="Minimum Scale", value1=1 )
-
-cmds.separator( h=6, style="none" )
-                                         
-maxScaleFieldGrp = cmds.floatFieldGrp( numberOfFields=1, label="Maximum Scale", value1=1 )
-                                         
-cmds.separator( h=12, style="none" )
-
-cmds.text( label="Scatter Group" )
-
-cmds.separator( h=6, style="none" )
-
-locatorGroupNameFieldGrp = cmds.textFieldGrp( label="Group Name", text="ScatterGroup" )
-
-cmds.separator( h=6, style="none" )
-
-locatorColorFieldGrp = cmds.intFieldGrp( numberOfFields=3, label="Scatter Point Color", 
-                                         value1=255, value2=0, value3=0 )
-
-cmds.separator( h=12, style="none" )
-
-cmds.button( "Generate Scatter", command=functools.partial( generateScatterPoints,
-                                                    resolutionField,
-                                                    probabilityField,
-                                                    surfaceOrientationCheckBox,
-                                                    locatorColorFieldGrp,
-                                                    randomRotMaxSliderGrp,
-                                                    randomRotMinSliderGrp,
-                                                    minScaleFieldGrp,
-                                                    maxScaleFieldGrp,
-                                                    locatorGroupNameFieldGrp ) ) 
-cmds.separator( h=20 )
-
-cmds.text( label="Replace Scatter Points With Selected Models" )
-
-cmds.separator( h=12, style="none" )
-
-scatterGroupNameFieldGrp = cmds.textFieldGrp( label="Scatter Group Name", text="" )
-
-cmds.separator( h=6, style="none" )
-
-cmds.button( "Add Models", command=functools.partial( createModels, scatterGroupNameFieldGrp ) )
-
-cmds.separator( h=12, style="none" )
-
-#cmds.dockControl( area='right', content=toolWindow, allowedArea= "all" )
- 
-cmds.showWindow( toolWindow ) 
