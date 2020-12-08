@@ -7,6 +7,19 @@ from scatter import generateScatterPoints, createModels
 # User Interface #
 #----------------#
 
+def setSamplingMethod(samplerOptionMenu):
+    option = cmds.optionMenu( samplerOptionMenu, query=True, value=True )
+    
+    if option == 'Poisson-Disc':
+        cmds.floatFieldGrp( discRadiusField, edit=1, visible=True )
+        cmds.intFieldGrp( resolutionField, edit=1, visible=False )
+        cmds.floatSliderGrp( probabilityField, edit=1, visible=False )
+    else:
+        cmds.floatFieldGrp( discRadiusField, edit=1, visible=False )
+        cmds.intFieldGrp( resolutionField, edit=1, visible=True )
+        cmds.floatSliderGrp( probabilityField, edit=1, visible=True )
+
+
 # Check if window exists
 if cmds.window( 'scatterToolUI' , exists = True ) :
     cmds.deleteUI( 'scatterToolUI' ) 
@@ -20,12 +33,22 @@ cmds.separator( h=12, style="none" )
 cmds.text( label="Random Scatter Point Generator" )
 cmds.separator( h=12, style="none" )
 
-resolutionField = cmds.intFieldGrp( numberOfFields=1, label="Sample Resolution", value1=20 )
+samplerOptionMenu = cmds.optionMenu( label='Sampler' )
+cmds.optionMenu( samplerOptionMenu, edit=1, changeCommand='setSamplingMethod(samplerOptionMenu)')
+
+cmds.menuItem( label='Poisson-Disc' )
+cmds.menuItem( label='Simple Randomizer' )
+
+cmds.separator( h=6, style="none" )
+
+discRadiusField = cmds.floatFieldGrp( numberOfFields=1, label="Disc Radius", value1=2 )
+
+resolutionField = cmds.intFieldGrp( numberOfFields=1, label="Sample Resolution", value1=20, visible=False )
 
 cmds.separator( h=6, style="none" )
 
 probabilityField = cmds.floatSliderGrp( label="Probability Distribution", min=0.0, max=1.0, 
-                                        value=0.5, step=0.01, field=True )
+                                        value=0.5, step=0.01, field=True, visible=False )
                                         
 cmds.separator( h=6, style="none" )
 
@@ -81,7 +104,9 @@ cmds.button( "Generate Scatter", command=functools.partial( generateScatterPoint
                                                     randomRotMinSliderGrp,
                                                     minScaleFieldGrp,
                                                     maxScaleFieldGrp,
-                                                    locatorGroupNameFieldGrp ) ) 
+                                                    locatorGroupNameFieldGrp,
+                                                    samplerOptionMenu,
+                                                    discRadiusField ) ) 
                                                     
 
 cmds.separator( h=20 )

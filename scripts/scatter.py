@@ -191,7 +191,8 @@ def aimY(vec):
 
 def generateScatterPoints( resolutionField, probabilityField, surfaceOrientationCheckBox, 
                            locatorColorFieldGrp, randomRotMaxSliderGrp, randomRotMinSliderGrp, 
-                           minScaleFieldGrp, maxScaleFieldGrp, locatorGroupNameFieldGrp, *pArgs ):
+                           minScaleFieldGrp, maxScaleFieldGrp, locatorGroupNameFieldGrp,
+                           samplerOptionMenu, discRadiusField, *pArgs ):
            
     # Check if a mesh is selected
     selected = cmds.ls( sl=True )
@@ -209,6 +210,8 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     minScale = cmds.floatFieldGrp( minScaleFieldGrp, query=True, value1=True )
     maxScale = cmds.floatFieldGrp( maxScaleFieldGrp, query=True, value1=True )
     scatterGroupName = cmds.textFieldGrp( locatorGroupNameFieldGrp, query=True, text=True )
+    samplingMethod = cmds.optionMenu( samplerOptionMenu, query=True, value=True )
+    discRadius = cmds.floatFieldGrp( discRadiusField, query=True, value1=True )
     
     # Get FnMesh of selected object to check ray imtersection
     fnMesh = getFnMesh(selected[0])
@@ -216,16 +219,12 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     # Get bounding box coordinates
     bbox = cmds.exactWorldBoundingBox( selected[0] )
     
-    # POISSON DISC SAMPLING
-    # ---------------------
-    discRadius = 2;
-    print "Generating samples.."
-    samples = hdtPoissonDiscSampling( bbox[0], bbox[3], bbox[2], bbox[5], discRadius )
-    print "Sampling complete"
-    # ---------------------
-    
-    # Generate sample coordinates
-    #samples = basicRandomSampling( bbox[0], bbox[2], bbox[3], bbox[5], resolution, probability )
+    # Select sampling method and generate scatter points
+    samples = []
+    if samplingMethod == 'Poisson-Disc':
+        samples = hdtPoissonDiscSampling( bbox[0], bbox[3], bbox[2], bbox[5], discRadius )
+    else:
+        samples = basicRandomSampling( bbox[0], bbox[2], bbox[3], bbox[5], resolution, probability )
     
     # Create a group for the samples
     sampleGroup = cmds.group( em=True, name=scatterGroupName )
