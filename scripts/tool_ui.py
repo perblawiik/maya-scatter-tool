@@ -61,12 +61,12 @@ cmds.text( label="Randomize Local Y-Axis Rotation" )
 
 cmds.separator( h=6, style="none" )
 
-randomRotMaxSliderGrp = cmds.intSliderGrp( label="Maximum Angle", min=0.0, max=180.0, 
+randomRotMaxSliderGrp = cmds.intSliderGrp( label="Counter-Clockwise", min=0.0, max=180.0, 
                                           value=0, step=1.0, field=True )
                                           
 cmds.separator( h=6, style="none" )
 
-randomRotMinSliderGrp = cmds.intSliderGrp( label="Minimum Angle", min=-180.0, max=0.0, 
+randomRotMinSliderGrp = cmds.intSliderGrp( label="Clockwise", min=0.0, max=180.0, 
                                           value=0, step=1.0, field=True )
 
 cmds.separator( h=12, style="none" )

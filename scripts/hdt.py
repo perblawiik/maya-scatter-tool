@@ -147,7 +147,15 @@ def hdtPoissonDiscSampling(xMin, xMax, zMin, zMax, radius):
 
     # A list to store the final samples
     samples = []
-    while areaTotal > 0.0000001:
+    
+    numIterations = 0
+    maxIterations = 100000
+    while areaTotal > 0.00001:
+        if numIterations > maxIterations:
+            break
+        
+        numIterations += 1
+        
         amount = (1 - (areaTotal * maxAreaInv)) * 100.0
         if int(amount) % 5 == 0:
             cmds.progressWindow(edit=True, progress=amount, status='Progress: %d%%' % amount)

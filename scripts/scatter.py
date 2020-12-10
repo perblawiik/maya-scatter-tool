@@ -4,64 +4,42 @@ import maya.OpenMaya as om
 import math
 import random
 
+from basic_sampler import basicRandomSampling
 from hdt import hdtPoissonDiscSampling
 
-def clampMax(value, max):
-    if value > max:
-        return max
-    return value    
-    
-def basicRandomSampling( xMin, zMin, xMax, zMax, resolution, P ):
-    sizeX = (xMax - xMin)
-    sizeZ = (zMax - zMin)
-    
-    delta = 0
-    dimX = 0
-    dimZ = 0
-    
-    # Adjust grid dimensions based on the largest side
-    if sizeX >= sizeZ:
-        dimX = resolution
-        dimZ = int((sizeZ/sizeX) * dimX)
-        
-        delta = sizeX / resolution
-    else:
-        dimZ = resolution
-        dimX = int((sizeX/sizeZ) * dimZ)
-        
-        delta = sizeZ / resolution
-        
-    # Generate a discrete grid by interpolating between min and max
-    xValues = []
-    zValues = []
-    for i in range(dimX):
-        xValues.append( lerp( xMin, xMax, i / float(dimX) ) )
-        
-    for i in range(dimZ):
-        zValues.append( lerp( zMin, zMax, i / float(dimZ) ) )
+def mergeBoundingBoxes(bboxes):
+    bbox = bboxes[0]
+    for i in range(1, len(bboxes)):
+        # Min X, Y, Z - coordinates
+        if bbox[0] > bboxes[i][0]:
+            bbox[0] = bboxes[i][0]
+        if bbox[1] > bboxes[i][1]:
+            bbox[1] = bboxes[i][1]
+        if bbox[2] > bboxes[i][2]:
+            bbox[2] = bboxes[i][2]
+        # Max X, Y, Z - coordinates
+        if bbox[3] < bboxes[i][3]:
+            bbox[3] = bboxes[i][3]
+        if bbox[4] < bboxes[i][4]:
+            bbox[4] = bboxes[i][4]
+        if bbox[5] < bboxes[i][5]:
+            bbox[5] = bboxes[i][5]
+            
+    return bbox
 
-    # Calculate half of the cell size used for applying offsets
-    deltaHalf = delta * 0.5
+def computeNormal(V0, V1, V2):
+    E1 = V1 - V0
+    E2 = V2 - V0
     
-    # Sample xz-coordinates based on given probability P
-    samples = []
+    # Normal = E1 x E2 (cross product)
+    N = om.MFloatVector()
+    N.x = (E1.y * E2.z) - (E1.z * E2.y)
+    N.y = (E1.z * E2.x) - (E1.x * E2.z)
+    N.z = (E1.x * E2.y) - (E1.y * E2.x)
     
-    # Use a specific starting seed
-    random.seed(0)
-    for j in range(1, dimZ):
-        for i in range(1, dimX):
-            if random.uniform(1.0, 0.0) < P:
-                # Add a random offset to reduce regular sampling artifacts
-                x = xValues[i] + random.uniform( deltaHalf, -deltaHalf )
-                z = zValues[j] + random.uniform( deltaHalf, -deltaHalf )
-                samples.append((x, z))
-    
-    random.seed()
-    return samples
-                
-def lerp( a, b, t ):
-    return a * (1 - t) + b * t
-                
+    N.normalize()
+    return (N.x, N.y, N.z)
+        
 def getFnMesh( meshName ):
     # Clear selection
     cmds.select( cl=True )
@@ -76,7 +54,6 @@ def getFnMesh( meshName ):
     return om.MFnMesh(item)
 
 def checkIntersections( fnMeshes, rayOrigin, rayDirection ):   
-
     # No specified triangle IDs
     triangleIds = None
     # IDs are not sorted
@@ -167,17 +144,8 @@ def checkIntersections( fnMeshes, rayOrigin, rayDirection ):
         points = om.MPointArray()
         fnMesh.getPoints( points, worldSpace )
         
-        E1 = points[normalIds[1]] - points[normalIds[0]]
-        E2 = points[normalIds[2]] - points[normalIds[0]]
-        
-        # Normal = E1 x E2 (cross product)
-        N = om.MFloatVector()
-        N.x = (E1.y * E2.z) - (E1.z * E2.y)
-        N.y = (E1.z * E2.x) - (E1.x * E2.z)
-        N.z = (E1.x * E2.y) - (E1.y * E2.x)
-        
-        N.normalize()
-        faceNormal = (N.x, N.y, N.z)
+        # Compute normal based on cross product
+        faceNormal = computeNormal( points[normalIds[0]], points[normalIds[1]], points[normalIds[2]] )
         """
     
     return intersectionFound, intersectionPoint, faceNormal
@@ -195,14 +163,14 @@ def aimY(vec):
             zAngle *= -1.0
     else:
         # Clamp to 1.0 in case of numerical error
-        zAngle = math.acos( clampMax( targetDir.y / xyLength, 1.0 ) )
+        zAngle = math.acos( min( targetDir.y / xyLength, 1.0 ) )
     
     if targetDir.x > 0:
         zAngle *= -1.0
     
     #xAngle = math.acos( xyLength / targetDir.length)
     # Clamp to 1.0 in case of numerical error
-    xAngle = math.acos( clampMax( xyLength, 1.0 ) )
+    xAngle = math.acos( min( xyLength, 1.0 ) )
     if targetDir.z < 0:
         xAngle *= -1.0
     
@@ -228,7 +196,7 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     probability = cmds.floatSliderGrp( probabilityField, query=True, value=True )
     useSurfaceOrientation = cmds.checkBoxGrp( surfaceOrientationCheckBox, query=True, value1=True )
     locatorColor = cmds.intFieldGrp( locatorColorFieldGrp, query=True, value=True )
-    rotationMin = cmds.intSliderGrp( randomRotMinSliderGrp, query=True, value=True )
+    rotationMin = -cmds.intSliderGrp( randomRotMinSliderGrp, query=True, value=True )
     rotationMax = cmds.intSliderGrp( randomRotMaxSliderGrp, query=True, value=True )
     minScale = cmds.floatFieldGrp( minScaleFieldGrp, query=True, value1=True )
     maxScale = cmds.floatFieldGrp( maxScaleFieldGrp, query=True, value1=True )
@@ -242,7 +210,6 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
         meshInfo = s.split(".")
         faceIds = []
         if len(meshInfo) == 2:
-            
             faceIdsStr = meshInfo[1][2:len(meshInfo[1])-1]
             numbers = [int(word) for word in faceIdsStr.split(":")]
             
@@ -273,34 +240,58 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
         bboxes.append( cmds.exactWorldBoundingBox( selected[i] ) )
 
     # Merge bounding boxes into one box
-    bbox = bboxes[0]
-    for i in range(1, len(bboxes)):
-        # Min X, Y, Z - coordinates
-        if bbox[0] > bboxes[i][0]:
-            bbox[0] = bboxes[i][0]
-        if bbox[1] > bboxes[i][1]:
-            bbox[1] = bboxes[i][1]
-        if bbox[2] > bboxes[i][2]:
-            bbox[2] = bboxes[i][2]
-        # Max X, Y, Z - coordinates
-        if bbox[3] < bboxes[i][3]:
-            bbox[3] = bboxes[i][3]
-        if bbox[4] < bboxes[i][4]:
-            bbox[4] = bboxes[i][4]
-        if bbox[5] < bboxes[i][5]:
-            bbox[5] = bboxes[i][5]
+    bbox = mergeBoundingBoxes(bboxes)
     
     # Select sampling method and generate scatter points
     samples = []
     if samplingMethod == 'Poisson-Disc':
+        #Top/bottom
         samples = hdtPoissonDiscSampling( bbox[0], bbox[3], bbox[2], bbox[5], discRadius )
+
+        #Right/Left
+        #samples = hdtPoissonDiscSampling( bbox[0], bbox[3], bbox[1], bbox[4], discRadius )
+    
+        #Front/Back
+        #samples = hdtPoissonDiscSampling( bbox[1], bbox[4], bbox[3], bbox[5], discRadius )
     else:
         samples = basicRandomSampling( bbox[0], bbox[2], bbox[3], bbox[5], resolution, probability )
-    
+   
     # Create a group for the samples
     sampleGroup = cmds.group( em=True, name=scatterGroupName )
-        
+
     for coordinates in samples:
+        
+        """
+        #Top
+        rayOrigin = om.MFloatPoint(coordinates[0], bbox[4] + 10.0, coordinates[1], 1.0)
+        #Bottom
+        #rayOrigin = om.MFloatPoint(coordinates[0], bbox[1] - 10.0, coordinates[1], 1.0)
+
+        #Left
+        #rayOrigin = om.MFloatPoint(coordinates[0], coordinates[1], bbox[5] + 10.0 , 1.0)
+        #Right
+        #rayOrigin = om.MFloatPoint(coordinates[0], coordinates[1], bbox[2] - 10.0 , 1.0)
+
+        #Front
+        #rayOrigin = om.MFloatPoint(bbox[3] + 10.0 ,coordinates[0], coordinates[1], 1.0)
+        #Back
+        #rayOrigin = om.MFloatPoint(bbox[0] - 10.0 ,coordinates[0], coordinates[1], 1.0)
+
+        # Cast ray in negative y-direction
+        #Top
+        rayDirection = om.MFloatVector(0, -1, 0)
+        #Bottom
+        #rayDirection = om.MFloatVector(0, 1, 0)
+        #Right
+        #rayDirection = om.MFloatVector(0, 0, -1)
+        #Left
+        #rayDirection = om.MFloatVector(0, 0, 1)
+        #Front
+        #rayDirection = om.MFloatVector(-1, 0, 0)
+        #Back
+        #rayDirection = om.MFloatVector(1, 0, 0)
+        """
+        
         rayOrigin = om.MFloatPoint(coordinates[0], bbox[4] + 10.0, coordinates[1], 1.0)
         
         # Cast ray in negative y-direction
