@@ -3,6 +3,7 @@ import functools
 
 from scatter import generateScatterPoints, createModels
 
+
 #----------------#
 # User Interface #
 #----------------#

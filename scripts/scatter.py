@@ -75,59 +75,82 @@ def getFnMesh( meshName ):
 
     return om.MFnMesh(item)
 
-def checkIntersection( fnMesh, rayOrigin, rayDirection ):   
-    # No specified face IDs
-    faceIds = None
+def checkIntersections( fnMeshes, rayOrigin, rayDirection ):   
+
     # No specified triangle IDs
     triangleIds = None
     # IDs are not sorted
     sortedIds = False
-
-    # No specified radius to search around the ray origin
-    maxParam = 999999
-    biDirectionalTest = False
-
+    
     # Coordinate space constraints
     worldSpace = om.MSpace.kWorld
+
+    # No specified radius to search around the ray origin
+    maxParam = 9999999999
+    
+    # Do not test in negative direction
+    biDirectionalTest = False
 
     # No intersection acceleration
     accelParams = None
     
-    # Intersections should be sorted in ascending order
-    sortIntersections = True
+    # References and pointers for saving intersection info
+    hitPoint = om.MFloatPoint()
+    
+    hitRayParams = om.MScriptUtil(0.0)
+    hitRayParamsPtr = hitRayParams.asFloatPtr()
 
-    # Arrays for saving intersection info
-    intersectionPoints = om.MFloatPointArray()
-    intersectionRayParams = om.MFloatArray()
-    intersectionFaces = om.MIntArray()
-    intersectionTriangles = None
-    intersectBarycentrics1= None
-    intersectBarycentrics2 = None
+    hitFace = om.MScriptUtil()
+    hitFace.createFromInt(0)
+    hitFacePtr = hitFace.asIntPtr()
+    
+    hitTriangle = None
+    hitBarycentric1= None
+    hitBarycentric2 = None
 
     # Tolerance value of the intersection
-    intersectionTolerance = 0.0001
+    hitTolerance = 0.0001
 
-    # Finds all intersections
-    intersectionFound = fnMesh.allIntersections( rayOrigin, rayDirection, faceIds, triangleIds, sortedIds,
-                                  worldSpace, maxParam, biDirectionalTest,
-                                  accelParams, sortIntersections, intersectionPoints,
-                                  intersectionRayParams, intersectionFaces, intersectionTriangles, 
-                                  intersectBarycentrics1, intersectBarycentrics2, intersectionTolerance )
-                                  
+    # Arrays for storing multiple intersections
+    closestFace = om.MScriptUtil()
+    closestFace.createFromInt(0)
+    minDistance = 9999999999
     intersectionPoint = (0,0,0)
-    faceNormal = (0,0,0)
+    intersectionFound = False
+    meshIndex = -1
     
-    if intersectionFound:
-        # The first intersection point in the array is the closest to the ray origin
-        intersectionPoint = (intersectionPoints[0].x, intersectionPoints[0].y, intersectionPoints[0].z)
+    for i in range(len(fnMeshes)):
+        # Select face ids
+        faceIds = None
+        if len(fnMeshes[i][1]) > 0:
+            faceIds = om.MIntArray()
+            for id in fnMeshes[i][1]:
+                faceIds.append(id)
         
+        # Check for intersection
+        if fnMeshes[i][0].closestIntersection( rayOrigin, rayDirection, faceIds, triangleIds, sortedIds,
+                                      worldSpace, maxParam, biDirectionalTest, accelParams, 
+                                      hitPoint, hitRayParamsPtr, hitFacePtr, hitTriangle, 
+                                      hitBarycentric1, hitBarycentric2, hitTolerance ):
+                                          
+            intersectionFound = True 
+            hitDistance = hitRayParams.getFloat(hitRayParamsPtr)
+            if hitDistance < minDistance:
+                minDistance = hitDistance
+                intersectionPoint = (hitPoint.x, hitPoint.y, hitPoint.z)
+                closestFace = om.MScriptUtil(hitFacePtr).asInt()
+                meshIndex = i
+       
+    faceNormal = (0,1,0)
+        
+    if intersectionFound:
         # Get the indices of the vertex normals of the intersection face
         normalIds = om.MIntArray()
-        fnMesh.getFaceNormalIds( intersectionFaces[0], normalIds )
+        fnMeshes[meshIndex][0].getFaceNormalIds( closestFace, normalIds )
 
         # Get all normals of the mesh
         normals = om.MFloatVectorArray()
-        fnMesh.getNormals( normals, worldSpace )
+        fnMeshes[meshIndex][0].getNormals( normals, worldSpace )
         
         # Sum the vertex normals to approximate the face normal
         n = normalIds.length()
@@ -156,7 +179,7 @@ def checkIntersection( fnMesh, rayOrigin, rayDirection ):
         N.normalize()
         faceNormal = (N.x, N.y, N.z)
         """
-
+    
     return intersectionFound, intersectionPoint, faceNormal
     
 def aimY(vec):
@@ -213,11 +236,59 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
     samplingMethod = cmds.optionMenu( samplerOptionMenu, query=True, value=True )
     discRadius = cmds.floatFieldGrp( discRadiusField, query=True, value1=True )
     
+    # Extract selected meshes and face ids
+    meshDict = {}
+    for s in selected:
+        meshInfo = s.split(".")
+        faceIds = []
+        if len(meshInfo) == 2:
+            
+            faceIdsStr = meshInfo[1][2:len(meshInfo[1])-1]
+            numbers = [int(word) for word in faceIdsStr.split(":")]
+            
+            if len(numbers) > 1:
+                for i in range(numbers[0], numbers[1] + 1):
+                    faceIds.append(i)
+            else:
+                faceIds.append(numbers[0])
+        
+        # If mesh name is no already in dictionary, add it with an empty list of face ids
+        if meshInfo[0] not in meshDict:
+            meshDict[meshInfo[0]] = []
+            for id in faceIds:
+                meshDict[meshInfo[0]].append(id)
+                    
+        else:
+            for id in faceIds:
+                meshDict[meshInfo[0]].append(id)
+   
     # Get FnMesh of selected object to check ray imtersection
-    fnMesh = getFnMesh(selected[0])
-    
-    # Get bounding box coordinates
-    bbox = cmds.exactWorldBoundingBox( selected[0] )
+    fnMeshes = []
+    for key in meshDict:
+        fnMeshes.append((getFnMesh(key), meshDict[key]))
+        
+    # Get bounding boxes for all selected meshes
+    bboxes = []
+    for i in range(len(selected)):
+        bboxes.append( cmds.exactWorldBoundingBox( selected[i] ) )
+
+    # Merge bounding boxes into one box
+    bbox = bboxes[0]
+    for i in range(1, len(bboxes)):
+        # Min X, Y, Z - coordinates
+        if bbox[0] > bboxes[i][0]:
+            bbox[0] = bboxes[i][0]
+        if bbox[1] > bboxes[i][1]:
+            bbox[1] = bboxes[i][1]
+        if bbox[2] > bboxes[i][2]:
+            bbox[2] = bboxes[i][2]
+        # Max X, Y, Z - coordinates
+        if bbox[3] < bboxes[i][3]:
+            bbox[3] = bboxes[i][3]
+        if bbox[4] < bboxes[i][4]:
+            bbox[4] = bboxes[i][4]
+        if bbox[5] < bboxes[i][5]:
+            bbox[5] = bboxes[i][5]
     
     # Select sampling method and generate scatter points
     samples = []
@@ -236,7 +307,7 @@ def generateScatterPoints( resolutionField, probabilityField, surfaceOrientation
         rayDirection = om.MFloatVector(0, -1, 0)
 
         # Cast ray and check for intersection with given mesh
-        intersectionFound, intersectionPoint, faceNormal = checkIntersection(fnMesh, rayOrigin, rayDirection)
+        intersectionFound, intersectionPoint, faceNormal = checkIntersections(fnMeshes, rayOrigin, rayDirection)
         
         # Move locator to a random position
         if intersectionFound:
@@ -327,5 +398,4 @@ def createModels( scatterGroupNameFieldGrp, *pArgs ):
     
     # Clear selection
     cmds.select( cl=True )
-	
 	

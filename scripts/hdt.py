@@ -206,8 +206,10 @@ def hdtPoissonDiscSampling(xMin, xMax, zMin, zMax, radius):
         # Check if the new point satisfies the minimum distance requirement
         if checkNeighboursMinDistance(lookupGrid, rX, rZ, rRow, rCol, gridDims, radius):
             # Add new point to both lookup grid and samples set
-            lookupGrid[gridDims * rRow + rCol].append((rX, rZ))
-            samples.append((rX, rZ))
+            lookupIndex = gridDims * rRow + rCol
+            if lookupIndex < len(lookupGrid):
+                lookupGrid[lookupIndex].append((rX, rZ))
+                samples.append((rX, rZ))
             
         # Subdivide the square into four child squares with half the side length 
         elif (activeListIndex + 1) < maxLevels:
